@@ -1,5 +1,55 @@
 #!/bin/sh
 set -eu
+if [ "$#" -eq 1 ] && [ "$1" = --help ]; then
+  cat <<'USAGE'
+Record declared imperative relevance; never edit usage.toon by hand.
+
+Setup (Linux/macOS): use existing sh, awk, standard utilities and Git.
+Publishing also requires authenticated gh and a logs label in the destination.
+No dependency is installed. Use this memory instance, never a public template
+as the destination for private events. Invoke from any directory using the
+absolute path to usage.sh. State must be private, outside the repo, and unique
+to this repo, harness and session.
+
+1. Capture and read the committed rules actually used:
+   sh usage.sh snapshot --repo PATH --rules-path RELATIVE_FILE --state-dir PATH
+   This prints a receipt directory. Read its rules.snapshot; keep that receipt
+   for these decisions. Dirty rules are rejected. Capture again after changes.
+
+2. At prompt completion, record new events:
+   sh usage.sh record --repo PATH --state-dir PATH --session ID --batch PROMPT_ID
+     [--max-events N] --event RECEIPT RULE HARNESS/MODEL EFFECT [...]
+   Keep all arguments in one command. Repeat --event with four quoted values.
+   RULE identifies section/item against the receipt; EFFECT is a short factual
+   decision consequence, not hidden reasoning or sensitive data. Use the real
+   harness/model, or harness/unknown if the model is unavailable. Do not guess
+   session metadata; obtain an explicit session ID if the harness exposes none.
+   Retain a stable prompt/batch ID before recording; reuse it on retries.
+   No new events: skip record. Pending older batches may still be published.
+
+3. Publish pending batches to the same session PR:
+   sh usage.sh publish --repo PATH --state-dir PATH --session ID
+     --session-name NAME --github-repo OWNER/REPO
+   Match the destination to origin. During explicit setup, if absent:
+   gh label create logs --repo OWNER/REPO --color 1D76DB
+   Each batch produces one usage.toon-only commit; no empty commits. The PR
+   title uses the session name (ID if blank), with label logs and manual merge.
+   An open PR is reused; after merge a new cycle starts. Closed unmerged PRs,
+   conflicts and ambiguous merge races need inspection, not blind replay.
+
+Check a combined log before merging:
+   sh usage.sh check --file PATH [--max-events N]
+TOON columns: ts,base,rule,harness,session,effect. Timestamp is Unix seconds;
+base is the full rules commit. Default cap: 5000 newest events, configurable
+per record/check. The cap does not prune Git history or the recovery journal.
+
+Exit: 0 success/no-op; 2 invalid input; 3 publication pending (retry publish);
+4 lock/closed PR/ambiguous recovery (inspect first). Preserve pending state.
+Report failures briefly and continue the primary task; never relax its rules.
+No hooks, background process, automatic merge, rule removal or compaction.
+USAGE
+  exit 0
+fi
 LC_ALL=C
 export LC_ALL
 umask 077

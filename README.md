@@ -74,10 +74,10 @@ After that, at the start of every session, **copy and paste the contents of `IMP
 
 ## Optional usage observability
 
-An opt-in `usage.sh` records declared rule relevance in `usage.toon` and publishes prompt batches through session PRs for manual merge. These are evidence-only PRs, labelled `logs`, not changes to the imperatives. The [usage guide](docs/usage.md) explains the contract, prerequisites, recovery and current validation limits. No collection or hook is enabled automatically.
+An opt-in `usage.sh` records declared rule relevance in `usage.toon` and publishes prompt batches through session PRs for manual merge. Run `sh usage.sh --help` for setup and commands. No collection or hook is enabled automatically.
 
 ## What remains separate
 
-Normative changes still use **one** approved commit straight to the default branch, touching only `IMPERATIVES.md` and closing the issue with `Closes #<number>`. Optional observability scripts, documentation and evidence PRs are a separate workflow; adopting its permanent instruction requires its own approval. There is no automatic rule removal or compaction.
+Normative changes still use **one** approved commit straight to the default branch, touching only `IMPERATIVES.md` and closing the issue with `Closes #<number>`. The script and evidence PRs are separate; adopting the permanent instruction requires its own approval. There is no automatic rule removal or compaction.
 
 The constraint remains readability: the rules fit at the top of a context window, while operational evidence stays outside the imperative file. An event never acquires normative force merely because its PR was merged.
