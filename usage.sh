@@ -86,6 +86,123 @@ snapshot() {
   read_receipt "$target"
   printf '%s\n' "$target"
 }
+empty_log() { printf 'events[0]{ts,base,rule,harness,session,effect}:' > "$1"; }
+combine_logs() {
+  before=$1 incoming=$2 output=$3 limit=$4
+  awk -v mode=check -f "$codec" "$before" || die 2 'existing log is invalid'
+  awk -v mode=check -f "$codec" "$incoming" || die 2 'batch log is invalid'
+  awk 'FNR>1 { n++; split($0,t,","); print t[1] "\t" n "\t" $0 }' "$before" "$incoming" > "$scratch/rows"
+  sort -k1,1n -k2,2n "$scratch/rows" > "$scratch/sorted"
+  tail -n "$limit" "$scratch/sorted" > "$scratch/kept"
+  awk '{ sub(/^[^\t]*\t[^\t]*\t/,""); row[++n]=$0 }
+    END { printf "events[%d]{ts,base,rule,harness,session,effect}:",n;
+          for(i=1;i<=n;i++) printf "\n%s",row[i] }' "$scratch/kept" > "$output"
+  awk -v mode=check -f "$codec" "$output" || die 2 'candidate log is invalid'
+}
+recover_preview() {
+  for pending in "$state_dir"/batches/*; do
+    [ -d "$pending" ] || continue
+    [ ! -L "$pending" ] || die 2 'batch must not be redirected'
+    [ ! -f "$pending/applied" ] || continue
+    if cmp -s "$state_dir/usage.toon" "$pending/after.toon"; then
+      : > "$pending/applied"
+    elif cmp -s "$state_dir/usage.toon" "$pending/before.toon"; then
+      cp "$pending/after.toon" "$scratch/recovered"
+      mv "$scratch/recovered" "$state_dir/usage.toon"
+      : > "$pending/applied"
+    else
+      die 4 'pending batch needs recovery; preview has unexpected content'
+    fi
+  done
+}
+record() {
+  [ -n "$session" ] && [ -n "$batch" ] || die 2 'session and batch IDs are required'
+  setup_state
+  acquire_lock
+  [ ! -L "$state_dir/usage.toon" ] || die 2 'log must not be redirected'
+  if [ -f "$state_dir/session" ]; then
+    [ "$(cat "$state_dir/session")" = "$session" ] || die 2 'state belongs to another session'
+  fi
+  recover_preview
+  key=$(printf '%s\n' "$batch" | git -C "$repo" hash-object --stdin)
+  journal="$state_dir/batches/$key"
+  mkdir "$scratch/batch" "$scratch/batch/events"
+  if [ -d "$journal" ]; then
+    timestamp=$(cat "$journal/ts")
+  else
+    timestamp=$(date +%s)
+  fi
+  printf '%s\n' "$batch" > "$scratch/batch/id"
+  printf '%s\n' "$session" > "$scratch/batch/session"
+  printf '%s\n' "$timestamp" > "$scratch/batch/ts"
+  printf '%s\n' "$max_events" > "$scratch/batch/max-events"
+  n=0
+  tool=
+  while [ "$#" -gt 0 ]; do
+    [ "$1" = --event ] && [ "$#" -ge 5 ] || die 2 'each event requires snapshot, rule, harness and effect'
+    read_receipt "$2"
+    n=$((n+1))
+    event_dir="$scratch/batch/events/$(printf '%09d' "$n")"
+    mkdir "$event_dir"
+    printf '%s\n' "$timestamp" > "$event_dir/ts"
+    printf '%s\n' "$receipt_base" > "$event_dir/base"
+    printf '%s\n' "$3" > "$event_dir/rule"
+    printf '%s\n' "$4" > "$event_dir/harness"
+    printf '%s\n' "$session" > "$event_dir/session"
+    printf '%s\n' "$5" > "$event_dir/effect"
+    event_tool=${4%%/*}
+    [ -z "$tool" ] || [ "$tool" = "$event_tool" ] || die 2 'a session cannot mix harness tools'
+    tool=$event_tool
+    shift 5
+  done
+  if [ -f "$state_dir/harness" ]; then
+    [ "$(cat "$state_dir/harness")" = "$tool" ] || die 2 'state belongs to another harness'
+  fi
+  awk -v mode=encode -f "$codec" "$scratch/batch/events/"* > "$scratch/batch/events.toon" || die 2 'invalid event payload'
+  if [ -d "$journal" ]; then
+    for field in id session max-events events.toon; do
+      cmp -s "$journal/$field" "$scratch/batch/$field" || die 2 'batch ID already has a different payload'
+    done
+    return 0
+  fi
+  if [ -f "$state_dir/usage.toon" ]; then
+    cp "$state_dir/usage.toon" "$scratch/batch/before.toon"
+  else
+    existing=$(git -C "$repo" ls-tree HEAD -- usage.toon | awk '$2=="blob" && $1 ~ /^100/ {print $3}')
+    if [ -n "$existing" ]; then
+      git -C "$repo" cat-file blob "$existing" > "$scratch/batch/before.toon"
+    else
+      empty_log "$scratch/batch/before.toon"
+    fi
+  fi
+  combine_logs "$scratch/batch/before.toon" "$scratch/batch/events.toon" "$scratch/batch/after.toon" "$max_events"
+  # A timestamp rollback can evict an entire incoming batch before it is recorded.
+  if cmp -s "$scratch/batch/before.toon" "$scratch/batch/after.toon"; then
+    mkdir -p "$state_dir/held"
+    held="$state_dir/held/$key"
+    [ ! -e "$held" ] || die 4 'batch is already held for retention review'
+    mv "$scratch/batch" "$held"
+    die 4 'batch retained locally; retention would produce an empty commit'
+  fi
+  mkdir -p "$state_dir/batches"
+  seq=0
+  for item in "$state_dir"/batches/*; do
+    [ -d "$item" ] || continue
+    value=$(cat "$item/sequence")
+    [ "$value" -le "$seq" ] || seq=$value
+  done
+  printf '%s\n' "$((seq+1))" > "$scratch/batch/sequence"
+  if [ ! -f "$state_dir/usage.toon" ]; then
+    cp "$scratch/batch/before.toon" "$scratch/initial"
+    mv "$scratch/initial" "$state_dir/usage.toon"
+  fi
+  printf '%s\n' "$session" > "$state_dir/session"
+  printf '%s\n' "$tool" > "$state_dir/harness"
+  mv "$scratch/batch" "$journal"
+  cp "$journal/after.toon" "$scratch/candidate"
+  mv "$scratch/candidate" "$state_dir/usage.toon"
+  : > "$journal/applied"
+}
 operation=${1:-}
 [ "$#" -gt 0 ] || die 2 'expected snapshot, record, check or publish'
 shift
@@ -111,5 +228,6 @@ valid_limit
 case "$operation" in
   check) [ "$#" -eq 0 ] || die 2 'unexpected event'; check_file "$file" ;;
   snapshot) [ "$#" -eq 0 ] || die 2 'unexpected event'; setup_state; acquire_lock; snapshot ;;
+  record) [ "$#" -gt 0 ] || exit 0; record "$@" ;;
   *) die 2 'operation is not implemented' ;;
 esac

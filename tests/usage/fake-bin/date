@@ -1,0 +1,6 @@
+#!/bin/sh
+if [ -n "${USAGE_TEST_TIME:-}" ]; then
+  printf '%s\n' "$USAGE_TEST_TIME"
+else
+  exec /bin/date "$@"
+fi
