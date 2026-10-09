@@ -68,12 +68,16 @@ git config --local user.name  "<your name>"
 git config --local user.email "<your email>"
 ```
 
-Labels are **not copied** with the template — creating them is the first step after instantiating. There are four and only four: `imperative` plus exactly one of `add`, `modify`, `remove`. The issue's state is already the status: open is a candidate, closed by the commit is implemented, `not planned` is rejected, `duplicate` is duplicated.
+Labels are **not copied** with the template — creating them is the first step after instantiating. Normative proposal issues use `imperative` plus exactly one of `add`, `modify`, `remove`. The issue's state is already the status: open is a candidate, closed by the commit is implemented, `not planned` is rejected, `duplicate` is duplicated. Optional evidence PRs use a separate `logs` label after that workflow is explicitly adopted; they are not normative proposals.
 
 After that, at the start of every session, **copy and paste the contents of `IMPERATIVES.md`** into the agent. The file is meant to be pasted, not attached: what is not in the text does not exist in the session.
 
-## What is deliberately absent
+## Optional usage observability
 
-No scripts, no GitHub Actions, no CI, no validator, no schema, no generated files, no branches and no pull requests. An approved issue becomes **one** commit straight to the default branch, touching only `IMPERATIVES.md` and closing the issue with `Closes #<number>`.
+An opt-in `usage.sh` records declared rule relevance in `usage.toon` and publishes prompt batches through session PRs for manual merge. Run `sh usage.sh --help` for setup and commands. No collection or hook is enabled automatically.
 
-That is not immaturity, it is the constraint that keeps the system readable: the file has to fit whole at the top of a context window, and every extra mechanism is one more thing the agent must understand before it can work. If one of them is ever genuinely missed, that itself becomes a normative issue.
+## What remains separate
+
+Normative changes still use **one** approved commit straight to the default branch, touching only `IMPERATIVES.md` and closing the issue with `Closes #<number>`. The script and evidence PRs are separate; adopting the permanent instruction requires its own approval. There is no automatic rule removal or compaction.
+
+The constraint remains readability: the rules fit at the top of a context window, while operational evidence stays outside the imperative file. An event never acquires normative force merely because its PR was merged.
