@@ -1,0 +1,63 @@
+#!/bin/sh
+set -eu
+[ -n "${USAGE_GH_FIXTURE:-}" ] || exit 90
+fixture=$USAGE_GH_FIXTURE
+[ ! -f "$fixture/offline" ] || exit 1
+command=$1
+verb=$2
+shift 2
+case "$command/$verb" in
+  auth/status) exit 0 ;;
+  repo/view)
+    [ "$1" = example/memory ] || exit 91
+    printf 'example/memory\nmain\ntrue\n%s\nhttps://github.com/example/memory.git\n' "$fixture/remote.git"
+    ;;
+  label/list)
+    [ ! -f "$fixture/no-label" ] || exit 0
+    printf 'logs\n'
+    ;;
+  pr/list)
+    branch=
+    while [ "$#" -gt 0 ]; do
+      case "$1" in --head) branch=$2 ;; esac
+      shift
+    done
+    [ -f "$fixture/pr-branch" ] || exit 0
+    [ "$(cat "$fixture/pr-branch")" = "$branch" ] || exit 0
+    state=$(cat "$fixture/pr-state")
+    merge=
+    [ ! -f "$fixture/pr-merge" ] || merge=$(cat "$fixture/pr-merge")
+    head=$(git --git-dir="$fixture/remote.git" rev-parse "refs/heads/$branch")
+    if [ -f "$fixture/race-head" ] && [ "$(cat "$fixture/race-head")" != "$head" ]; then
+      state=MERGED
+      printf 'MERGED\n' > "$fixture/pr-state"
+    fi
+    printf '%s|%s|%s|%s\n' "$(cat "$fixture/pr-number")" "$state" "$merge" "$head"
+    ;;
+  pr/create|pr/edit)
+    branch= title= body= label=
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --head) branch=$2 ;;
+        --title) title=$2 ;;
+        --body-file) body=$2 ;;
+        --label) label=$2 ;;
+      esac
+      shift
+    done
+    [ -f "$body" ] || exit 92
+    cp "$body" "$fixture/pr-body"
+    if [ "$verb" = create ]; then
+      [ "$label" = logs ] && [ -n "$branch" ] && [ -n "$title" ] || exit 93
+      number=1
+      [ ! -f "$fixture/pr-number" ] || number=$(( $(cat "$fixture/pr-number") + 1 ))
+      printf '%s\n' "$number" > "$fixture/pr-number"
+      printf '%s\n' "$branch" > "$fixture/pr-branch"
+      printf '%s\n' "$title" > "$fixture/pr-title"
+      printf 'OPEN\n' > "$fixture/pr-state"
+      [ ! -f "$fixture/lose-create-response" ] || exit 1
+      printf 'https://github.com/example/memory/pull/%s\n' "$number"
+    fi
+    ;;
+  *) exit 94 ;;
+esac

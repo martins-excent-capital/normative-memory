@@ -28,4 +28,6 @@ assert_status 2 sh usage.sh snapshot --repo "$fixture_repo" --rules-path link.md
 printf 'events[0]{ts,base,rule,harness,session,effect}:' > "$task_tmp/empty.toon"
 assert_status 0 sh usage.sh check --file "$task_tmp/empty.toon"
 assert_status 2 sh usage.sh check --file "$task_tmp/empty.toon" --max-events 0
+printf 'events[0]{ts,base,rule,harness,session,effect}:\000hidden' > "$task_tmp/nul.toon"
+assert_status 2 sh usage.sh check --file "$task_tmp/nul.toon"
 finish provenance

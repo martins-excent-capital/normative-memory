@@ -3,6 +3,7 @@ function fail() { failed = 1; print "usage: invalid event or TOON profile" > "/d
 function utf8(s,    i,b,n,j,v,lo,hi) {
     for (i = 1; i <= length(s); i++) {
         b = byte[substr(s,i,1)]
+        if (b == 0) return 0
         if (b < 128) continue
         if (b >= 194 && b <= 223) n = 1
         else if (b >= 224 && b <= 239) n = 2

@@ -11,9 +11,14 @@ valid_limit() {
   case "$max_events" in ''|*[!0-9]*|0*) die 2 'max-events must be a positive integer' ;; esac
   [ "${#max_events}" -le 9 ] || die 2 'max-events exceeds supported integer range'
 }
-check_file() {
+validate_toon() {
   [ -f "$1" ] && [ ! -L "$1" ] || die 2 'log is absent or not a regular file'
+  # Some system AWKs truncate at NUL before the codec can inspect the line.
+  tr -d '\000' < "$1" | cmp -s - "$1" || die 2 'NUL is outside the usage log profile'
   awk -v mode=check -f "$codec" "$1" || die 2 'log validation failed'
+}
+check_file() {
+  validate_toon "$1"
   rows=$(awk 'END { print NR-1 }' "$1")
   [ "$rows" -le "$max_events" ] || die 2 'log exceeds max-events'
 }
@@ -89,15 +94,15 @@ snapshot() {
 empty_log() { printf 'events[0]{ts,base,rule,harness,session,effect}:' > "$1"; }
 combine_logs() {
   before=$1 incoming=$2 output=$3 limit=$4
-  awk -v mode=check -f "$codec" "$before" || die 2 'existing log is invalid'
-  awk -v mode=check -f "$codec" "$incoming" || die 2 'batch log is invalid'
+  validate_toon "$before"
+  validate_toon "$incoming"
   awk 'FNR>1 { n++; split($0,t,","); print t[1] "\t" n "\t" $0 }' "$before" "$incoming" > "$scratch/rows"
   sort -k1,1n -k2,2n "$scratch/rows" > "$scratch/sorted"
   tail -n "$limit" "$scratch/sorted" > "$scratch/kept"
   awk '{ sub(/^[^\t]*\t[^\t]*\t/,""); row[++n]=$0 }
     END { printf "events[%d]{ts,base,rule,harness,session,effect}:",n;
           for(i=1;i<=n;i++) printf "\n%s",row[i] }' "$scratch/kept" > "$output"
-  awk -v mode=check -f "$codec" "$output" || die 2 'candidate log is invalid'
+  validate_toon "$output"
 }
 recover_preview() {
   for pending in "$state_dir"/batches/*; do
@@ -229,5 +234,6 @@ case "$operation" in
   check) [ "$#" -eq 0 ] || die 2 'unexpected event'; check_file "$file" ;;
   snapshot) [ "$#" -eq 0 ] || die 2 'unexpected event'; setup_state; acquire_lock; snapshot ;;
   record) [ "$#" -gt 0 ] || exit 0; record "$@" ;;
+  publish) [ "$#" -eq 0 ] || die 2 'unexpected event'; . "$program_dir/lib/usage-publish.sh"; publish ;;
   *) die 2 'operation is not implemented' ;;
 esac

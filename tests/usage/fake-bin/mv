@@ -1,4 +1,8 @@
 #!/bin/sh
+if [ "${USAGE_TEST_INTERRUPT:-}" = before-commit-journal ] && [ "${2##*/}" = commit ]; then
+  kill -TERM "$PPID"
+  exit 1
+fi
 if [ "${USAGE_TEST_INTERRUPT:-}" = before-preview ] && [ "${1##*/}" = candidate ]; then
   kill -TERM "$PPID"
   exit 1
