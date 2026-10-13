@@ -20,9 +20,13 @@ to this repo, harness and session.
    sh usage.sh record --repo PATH --state-dir PATH --session ID --batch PROMPT_ID
      [--max-events N] --event RECEIPT RULE HARNESS/MODEL EFFECT [...]
    Keep all arguments in one command. Repeat --event with four quoted values.
-   RULE identifies section/item against the receipt; EFFECT is a short factual
-   decision consequence, not hidden reasoning or sensitive data. Use the real
-   harness/model, or harness/unknown if the model is unavailable. Do not guess
+   RULE is '#L15' or '#L15-L20', covering the complete imperative in the receipt's
+   rules.snapshot. Read numbered source lines (e.g. nl -ba); no columns or URLs.
+   New events require ordered, positive line numbers within that snapshot.
+   Resolve with the rules file at base, adding ?plain=1 and the fragment on GitHub.
+   Old textual references remain readable; do not rewrite historical events.
+   EFFECT is a short factual consequence, not hidden reasoning or sensitive data.
+   Use the real harness/model, or harness/unknown if unavailable. Do not guess
    session metadata; obtain an explicit session ID if the harness exposes none.
    Retain a stable prompt/batch ID before recording; reuse it on retries.
    No new events: skip record. Pending older batches may still be published.
@@ -94,6 +98,18 @@ acquire_lock() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
   scratch=$(mktemp -d "$state_dir/txn.XXXXXX")
+}
+validate_rule() {
+  USAGE_RULE_REF="$1" awk '
+    BEGIN {
+      ref = ENVIRON["USAGE_RULE_REF"]
+      if (ref !~ /^#L[1-9][0-9]*(-L[1-9][0-9]*)?$/) { bad = 1; exit 1 }
+      n = split(substr(ref, 3), lines, "-L")
+      first = lines[1] + 0
+      last = (n == 2 ? lines[2] + 0 : first)
+    }
+    END { if (bad || first > last || last > NR) exit 1 }
+  ' "$receipt/rules.snapshot" || die 2 'rule must be #Lstart or #Lstart-Lend within the snapshot'
 }
 read_receipt() {
   receipt=$1
@@ -196,6 +212,8 @@ record() {
   while [ "$#" -gt 0 ]; do
     [ "$1" = --event ] && [ "$#" -ge 5 ] || die 2 'each event requires snapshot, rule, harness and effect'
     read_receipt "$2"
+    # Existing batches are compared byte-for-byte below, including legacy refs.
+    [ -d "$journal" ] || validate_rule "$3"
     n=$((n+1))
     event_dir="$scratch/batch/events/$(printf '%09d' "$n")"
     mkdir "$event_dir"
